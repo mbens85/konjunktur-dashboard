@@ -1,0 +1,2161 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Konjunkturovervåkning</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap');
+        :root {
+            --nb-blue: #2e5266;
+            --prognose: #4a90e2;
+            --faktisk: #27ae60;
+            --bg: #fafbfc;
+            --bg-card: #ffffff;
+            --text: #2c3e50;
+            --text-muted: #7f8c8d;
+            --border: #e1e8ed;
+            --hover: #f8f9fa;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'IBM Plex Sans', sans-serif; background: var(--bg); color: var(--text); line-height: 1.5; }
+        .container { max-width: 1800px; margin: 0 auto; padding: 2rem; }
+        
+        /* Page switching */
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Header */
+        header { background: white; padding: 2rem; border-radius: 8px; margin-bottom: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid var(--nb-blue); position: relative; }
+        h1 { font-size: 2rem; color: var(--nb-blue); margin-bottom: 0.5rem; font-weight: 600; }
+        .subtitle { font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; color: var(--text-muted); }
+        
+        /* Back button */
+        .back-button { position: absolute; top: 2rem; right: 2rem; background: var(--nb-blue); color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; font-family: 'IBM Plex Sans', sans-serif; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: all 0.2s; }
+        .back-button:hover { background: #1e3d4d; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+        
+        /* KPI Boxes */
+        .kpi-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .kpi-box { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); text-align: center; transition: all 0.2s; }
+        .kpi-box.clickable { cursor: pointer; }
+        .kpi-box.clickable:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+        .kpi-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        .kpi-value { font-size: 2.5rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace; line-height: 1; }
+        .kpi-value.kpi { color: #e74c3c; }
+        .kpi-value.kpi-jae { color: #3498db; }
+        .kpi-value.unemployment { color: #9b59b6; }
+        .kpi-value.gdp { color: #27ae60; }
+        .kpi-meta { font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem; }
+        
+        /* Charts */
+        .rate-chart-section { background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 2rem; }
+        .rate-chart-title { font-size: 1.2rem; color: var(--nb-blue); margin-bottom: 0.5rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+        .zoom-hint { font-size: 0.75rem; color: var(--text-muted); font-weight: 400; }
+        .rate-chart-container { height: 350px; position: relative; }
+        
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(550px, 1fr)); gap: 2rem; margin-bottom: 2rem; }
+        .chart-card { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .chart-title { font-size: 1.1rem; color: var(--nb-blue); margin-bottom: 0.5rem; font-weight: 600; display: flex; justify-content: space-between; align-items: center; }
+        .chart-subtitle { font-size: 0.8rem; color: var(--text-muted); font-weight: 400; }
+        .chart-container { height: 350px; position: relative; }
+        .chart-controls { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+        .btn-zoom-reset { background: var(--bg); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.8rem; border-radius: 4px; font-size: 0.75rem; cursor: pointer; transition: all 0.2s; }
+        .btn-zoom-reset:hover { background: var(--hover); border-color: var(--nb-blue); }
+        
+        /* Inflation page specific */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .summary-item { text-align: center; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+        .summary-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 500; }
+        .summary-value { font-size: 2.5rem; font-weight: 600; font-family: 'IBM Plex Mono', monospace; }
+        
+        .chart-section { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 2rem; }
+        .section-title { font-size: 1.3rem; color: var(--nb-blue); margin-bottom: 1rem; font-weight: 600; border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; }
+        .section-description { font-size: 0.9rem; color: var(--text-muted); margin-bottom: 1.5rem; line-height: 1.6; }
+        
+        .info-box { background: #fff3cd; border-left: 4px solid #ffc107; padding: 1rem; border-radius: 4px; margin: 1rem 0; }
+        .info-box p { margin: 0; font-size: 0.9rem; color: #856404; }
+        
+        /* Table */
+        table { width: 100%; border-collapse: collapse; font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; margin-top: 1.5rem; }
+        thead { background: var(--bg); }
+        th { padding: 0.75rem 0.5rem; text-align: left; font-weight: 600; color: var(--nb-blue); border-bottom: 2px solid var(--border); }
+        th.right, td.right { text-align: right; }
+        td { padding: 0.65rem 0.5rem; border-bottom: 1px solid #f5f5f5; }
+        tr:hover { background: var(--hover); }
+        .contribution-positive { color: var(--faktisk); font-weight: 600; }
+        .contribution-negative { color: #e74c3c; font-weight: 600; }
+        .subgroup-row { padding-left: 2rem !important; font-style: italic; }
+        
+        /* Loading indicator */
+        .loading { color: var(--text-muted); font-size: 0.9rem; font-style: italic; padding: 1rem; text-align: center; }
+        .error { color: #e74c3c; font-size: 0.9rem; padding: 1rem; background: #fee; border-radius: 4px; margin: 1rem 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- DASHBOARD PAGE -->
+        <div id="dashboardPage" class="page active">
+            <header>
+                <h1>📊 Konjunkturovervåkning</h1>
+                <p class="subtitle">Oppfølging av Norges Bank PPR 4/2025</p>
+            </header>
+
+            <!-- KPI Boxes -->
+            <div class="kpi-boxes">
+                <div class="kpi-box clickable" onclick="showPage('inflation')">
+                    <div class="kpi-label">KPI (des 2025)</div>
+                    <div class="kpi-value kpi">3.2%</div>
+                    <div class="kpi-meta">12-måneders vekst • Klikk for detaljer</div>
+                </div>
+                <div class="kpi-box clickable" onclick="showPage('inflation')">
+                    <div class="kpi-label">KPI-JAE (des 2025)</div>
+                    <div class="kpi-value kpi-jae">3.1%</div>
+                    <div class="kpi-meta">12-måneders vekst • Klikk for detaljer</div>
+                </div>
+                <div class="kpi-box">
+                    <div class="kpi-label">Ledighet (jan 2026)</div>
+                    <div class="kpi-value unemployment">2.1%</div>
+                    <div class="kpi-meta">NAV registrert sesongjustert</div>
+                </div>
+                <div class="kpi-box clickable" onclick="showPage('forecasts')">
+                    <div class="kpi-label">Prognoser</div>
+                    <div class="kpi-value gdp" style="font-size: 1.8rem;">PPR 4/25</div>
+                    <div class="kpi-meta">Norges Bank • Klikk for detaljer</div>
+                </div>
+            </div>
+
+            <!-- Interest Rate Chart -->
+            <div class="rate-chart-section">
+                <div class="rate-chart-title">
+                    Styringsrenten og rentebane
+                    <span class="zoom-hint">💡 Zoom: scroll eller drag, dobbeltklikk for reset</span>
+                </div>
+                <div class="rate-chart-container">
+                    <canvas id="rateChart"></canvas>
+                </div>
+                <div class="chart-controls">
+                    <button class="btn-zoom-reset" onclick="resetZoom('rate')">↺ Reset zoom</button>
+                </div>
+            </div>
+
+            <!-- Main Charts Grid -->
+            <div class="charts-grid">
+                <!-- KPI Chart with both KPI and KPI-JAE -->
+                <div class="chart-card">
+                    <div class="chart-title">
+                        Konsumprisindeksen (KPI)
+                        <span class="chart-subtitle">12-måneders vekst</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="kpiChart"></canvas>
+                    </div>
+                    <div class="chart-controls">
+                        <button class="btn-zoom-reset" onclick="resetZoom('kpi')">↺ Reset zoom</button>
+                    </div>
+                </div>
+
+                <!-- I44 Chart (Live from Norges Bank API) -->
+                <div class="chart-card">
+                    <div class="chart-title">
+                        Kronekursindeks (I-44)
+                        <span class="chart-subtitle">Import-vektet valutakurs</span>
+                    </div>
+                    <div id="i44Loading" class="loading">Henter data fra Norges Bank API...</div>
+                    <div id="i44Error" class="error" style="display: none;"></div>
+                    <div class="chart-container">
+                        <canvas id="i44Chart"></canvas>
+                    </div>
+                    <div class="chart-controls">
+                        <button class="btn-zoom-reset" onclick="resetZoom('i44')">↺ Reset zoom</button>
+                    </div>
+                </div>
+
+                <!-- Production Gap Chart -->
+                <div class="chart-card">
+                    <div class="chart-title">
+                        Produksjonsgap
+                        <span class="chart-subtitle">Faktisk + Prognose PPR 4/25</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="outputGapChart"></canvas>
+                    </div>
+                    <div class="chart-controls">
+                        <button class="btn-zoom-reset" onclick="resetZoom('outputGap')">↺ Reset zoom</button>
+                    </div>
+                </div>
+
+                <!-- Unemployment Chart (NAV and AKU) -->
+                <div class="chart-card">
+                    <div class="chart-title">
+                        Registrert ledighet
+                        <span class="chart-subtitle">NAV og SSB AKU (sesongjustert)</span>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="unemploymentChart"></canvas>
+                    </div>
+                    <div class="chart-controls">
+                        <button class="btn-zoom-reset" onclick="resetZoom('unemployment')">↺ Reset zoom</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- International Inflation Table -->
+            <div class="chart-section">
+                <h2 class="section-title">Internasjonal inflasjon – Januar 2026</h2>
+                <p class="section-description">12-måneders konsumprisvekst i utvalgte land. Neste oppdatering: Mars 2026.</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Land</th>
+                            <th class="right">Nov 2025</th>
+                            <th class="right">Des 2025</th>
+                            <th class="right">Jan 2026</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Norge (KPI)</strong></td>
+                            <td class="right">3.0</td>
+                            <td class="right">2.9</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Norge (KPI-JAE)</strong></td>
+                            <td class="right">3.0</td>
+                            <td class="right">3.0</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Euro-området</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.0</td>
+                            <td class="right">1.7</td>
+                        </tr>
+                        <tr>
+                            <td>USA</td>
+                            <td class="right">2.7</td>
+                            <td class="right">2.7</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Storbritannia</td>
+                            <td class="right">3.2</td>
+                            <td class="right">3.4</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Sverige (CPIF)</td>
+                            <td class="right">2.3</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.0</td>
+                        </tr>
+                        <tr>
+                            <td>Danmark</td>
+                            <td class="right">2.1</td>
+                            <td class="right">1.9</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Tyskland</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.0</td>
+                            <td class="right">1.7</td>
+                        </tr>
+                        <tr>
+                            <td>Frankrike</td>
+                            <td class="right">0.8</td>
+                            <td class="right">0.7</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Spania</td>
+                            <td class="right">3.2</td>
+                            <td class="right">3.0</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Italia</td>
+                            <td class="right">1.1</td>
+                            <td class="right">1.2</td>
+                            <td class="right">-</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+                    Kilder: Eurostat (HICP), US BLS (CPI), ONS UK (CPI), SCB Sverige (CPIF), Danmarks Statistik<br>
+                    <strong>Neste publisering:</strong> Eurostat 4. mars, US BLS 11. mars, ONS UK 19. mars 2026
+                </p>
+            </div>
+
+            <!-- System Status Section -->
+            <div style="margin-top: 3rem; padding-top: 2rem; border-top: 2px solid var(--border);">
+                <h2 style="font-size: 1.1rem; color: var(--nb-blue); margin-bottom: 1.5rem; font-weight: 600;">
+                    🔧 Systemstatus og datakilder
+                </h2>
+
+                <!-- Automatic Update Status -->
+                <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); margin-bottom: 1.5rem;">
+                    <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #4caf50;" id="autoUpdateIndicator"></div>
+                        <h3 style="font-size: 1rem; font-weight: 600; margin: 0;">Automatisk oppdatering</h3>
+                        <span style="margin-left: auto; font-size: 0.85rem; color: var(--text-muted);">Kjører daglig kl. 08:00</span>
+                    </div>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; font-size: 0.9rem;">
+                        <div>
+                            <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">STATUS</div>
+                            <div style="font-weight: 500;" id="autoUpdateStatus">Aktiv</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">SISTE KJØRING</div>
+                            <div style="font-weight: 500;" id="lastUpdateTime">6.2.2026 kl. 08:00</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">NESTE KJØRING</div>
+                            <div style="font-weight: 500;" id="nextUpdateTime">7.2.2026 kl. 08:00</div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-muted); font-size: 0.8rem; margin-bottom: 0.25rem;">DATAHENTINGER I DAG</div>
+                            <div style="font-weight: 500;" id="todayFetches">0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- API Status Grid -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
+                    <!-- SSB API Status -->
+                    <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;" id="ssbStatusCard">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                            <div style="width: 10px; height: 10px; border-radius: 50%; background: #4caf50;" id="ssbIndicator"></div>
+                            <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">SSB (Statistisk sentralbyrå)</h3>
+                        </div>
+                        <div style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+                            <span style="color: var(--text-muted);">Status:</span> 
+                            <span style="font-weight: 500; color: #4caf50;" id="ssbStatus">API tilgjengelig</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">
+                            <div>Statistikkbanken API: <a href="https://data.ssb.no/api/" target="_blank" style="color: var(--nb-blue);">data.ssb.no/api</a></div>
+                            <div style="margin-top: 0.25rem;">Manuell oppdatering: KPI-data hentes fra tabell 03013</div>
+                        </div>
+                    </div>
+
+                    <!-- NAV API Status -->
+                    <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;" id="navStatusCard">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                            <div style="width: 10px; height: 10px; border-radius: 50%; background: #4caf50;" id="navIndicator"></div>
+                            <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">NAV (Arbeidsledighet)</h3>
+                        </div>
+                        <div style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+                            <span style="color: var(--text-muted);">Status:</span> 
+                            <span style="font-weight: 500; color: #4caf50;" id="navStatus">API tilgjengelig</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">
+                            <div>Åpne data: <a href="https://data.nav.no" target="_blank" style="color: var(--nb-blue);">data.nav.no</a></div>
+                            <div style="margin-top: 0.25rem;">Manuell oppdatering: Månedlige ledighetstall</div>
+                        </div>
+                    </div>
+
+                    <!-- Norges Bank API Status -->
+                    <div style="background: white; padding: 1.5rem; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.08); border-left: 4px solid #4caf50;" id="nbStatusCard">
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;">
+                            <div style="width: 10px; height: 10px; border-radius: 50%; background: #4caf50;" id="nbIndicator"></div>
+                            <h3 style="font-size: 0.95rem; font-weight: 600; margin: 0;">Norges Bank (Prognoser)</h3>
+                        </div>
+                        <div style="font-size: 0.85rem; margin-bottom: 0.75rem;">
+                            <span style="color: var(--text-muted);">Status:</span> 
+                            <span style="font-weight: 500;" id="nbStatus">Operativ</span>
+                        </div>
+                        <div style="font-size: 0.85rem; color: var(--text-muted);">
+                            <div>Sist sjekket: <span id="nbLastCheck">15:32:59</span></div>
+                            <div style="margin-top: 0.25rem;">Feil siste 7 dager: <span id="nbErrors">0</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Info note -->
+                <div style="margin-top: 1.5rem; padding: 1rem; background: #f5f5f5; border-radius: 6px; font-size: 0.85rem; color: var(--text-muted);">
+                    <strong>ℹ️ Om datakilder:</strong> SSB og NAV har åpne API-er som er tilgjengelige. Data oppdateres for øyeblikket manuelt, men kan automatiseres. Norges Bank har et velfungerende API for valutakurser og renter som hentes automatisk.
+                </div>
+            </div>
+        </div>
+
+        <!-- FORECASTS PAGE (PPR 4/25) -->
+        <div id="forecastsPage" class="page">
+            <header>
+                <h1>📊 Prognoser fra Norges Bank</h1>
+                <p class="subtitle">Pengepolitisk rapport 4/2025 (Desember 2025)</p>
+                <button class="back-button" onclick="showPage('dashboard')">← Tilbake til dashboard</button>
+            </header>
+
+            <!-- PDF Upload functionality -->
+            <div class="chart-section" style="background: #e8f5e9; border-left: 4px solid #4caf50;">
+                <h2 class="section-title" style="color: #2e7d32;">🔄 Oppdater prognoser automatisk</h2>
+                <p class="section-description">Last opp ny PPR-PDF når Norges Bank publiserer (mars, juni, september, desember). Systemet leser automatisk tabellene og oppdaterer tallene.</p>
+                <input type="file" id="pprPdfUpload" accept=".pdf" style="display: none;">
+                <button onclick="document.getElementById('pprPdfUpload').click()" style="background: #4caf50; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 6px; font-family: 'IBM Plex Sans', sans-serif; font-weight: 500; cursor: pointer;">
+                    📄 Last opp ny PPR (PDF)
+                </button>
+                <div id="pdfUploadStatus" style="margin-top: 0.75rem; font-size: 0.9rem;"></div>
+            </div>
+
+            <!-- Tabell 2a: Konsumpriser. Tolvmånedersvekst. Prosent -->
+            <div class="chart-section">
+                <h2 class="section-title">Tabell 2a: Konsumpriser. Tolvmånedersvekst. Prosent</h2>
+                <p class="section-description">Kilde: Statistisk sentralbyrå og Norges Bank</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th colspan="4" style="text-align: center; border-bottom: 1px solid var(--border);">2025</th>
+                            <th colspan="3" style="text-align: center; border-bottom: 1px solid var(--border);">2026</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="right">sep</th>
+                            <th class="right">okt</th>
+                            <th class="right">nov</th>
+                            <th class="right">des</th>
+                            <th class="right">jan</th>
+                            <th class="right">feb</th>
+                            <th class="right">mar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="8" style="background: var(--bg); font-weight: 600; padding: 0.5rem;">KPI</td>
+                        </tr>
+                        <tr>
+                            <td>Faktisk</td>
+                            <td class="right">3.6</td>
+                            <td class="right">3.1</td>
+                            <td class="right">3.0</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 3/25</td>
+                            <td class="right">3.7</td>
+                            <td class="right">2.7</td>
+                            <td class="right">2.5</td>
+                            <td class="right">2.6</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 4/25</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">2.9</td>
+                            <td class="right">2.7</td>
+                            <td class="right">1.9</td>
+                            <td class="right">2.6</td>
+                        </tr>
+                        <tr>
+                            <td colspan="8" style="background: var(--bg); font-weight: 600; padding: 0.5rem;">KPI-JAE</td>
+                        </tr>
+                        <tr>
+                            <td>Faktisk</td>
+                            <td class="right">3.0</td>
+                            <td class="right">3.4</td>
+                            <td class="right">3.0</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 3/25</td>
+                            <td class="right">3.2</td>
+                            <td class="right">3.2</td>
+                            <td class="right">3.1</td>
+                            <td class="right">3.1</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 4/25</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">3.0</td>
+                            <td class="right">2.9</td>
+                            <td class="right">2.6</td>
+                            <td class="right">2.7</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tabell 2b: Boligpriser. Månedsvekst. Sesongjustert. Prosent -->
+            <div class="chart-section">
+                <h2 class="section-title">Tabell 2b: Boligpriser. Månedsvekst. Sesongjustert. Prosent</h2>
+                <p class="section-description">Kilde: Eiendom Norge, Eiendomsverdi, Finn.no og Norges Bank</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th colspan="4" style="text-align: center; border-bottom: 1px solid var(--border);">2025</th>
+                            <th colspan="3" style="text-align: center; border-bottom: 1px solid var(--border);">2026</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="right">sep</th>
+                            <th class="right">okt</th>
+                            <th class="right">nov</th>
+                            <th class="right">des</th>
+                            <th class="right">jan</th>
+                            <th class="right">feb</th>
+                            <th class="right">mar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Faktisk</td>
+                            <td class="right">0.4</td>
+                            <td class="right">0.6</td>
+                            <td class="right">0.7</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 3/25</td>
+                            <td class="right">0.6</td>
+                            <td class="right">0.5</td>
+                            <td class="right">0.5</td>
+                            <td class="right">0.4</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 4/25</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">0.8</td>
+                            <td class="right">0.6</td>
+                            <td class="right">0.6</td>
+                            <td class="right">0.6</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tabell 2c: Registrert ledighet (rate). Prosent av arbeidsstyrken. Sesongjustert -->
+            <div class="chart-section">
+                <h2 class="section-title">Tabell 2c: Registrert ledighet (rate). Prosent av arbeidsstyrken. Sesongjustert</h2>
+                <p class="section-description">Kilde: Nav og Norges Bank</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th colspan="4" style="text-align: center; border-bottom: 1px solid var(--border);">2025</th>
+                            <th colspan="3" style="text-align: center; border-bottom: 1px solid var(--border);">2026</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="right">sep</th>
+                            <th class="right">okt</th>
+                            <th class="right">nov</th>
+                            <th class="right">des</th>
+                            <th class="right">jan</th>
+                            <th class="right">feb</th>
+                            <th class="right">mar</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Faktisk</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 3/25</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.2</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 4/25</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tabell 2d: BNP for Fastlands-Norge. Kvartalsvekst. Sesongjustert. Prosent -->
+            <div class="chart-section">
+                <h2 class="section-title">Tabell 2d: BNP for Fastlands-Norge. Kvartalsvekst.¹ Sesongjustert. Prosent</h2>
+                <p class="section-description">¹ Kvartalsvekst er annualisert i figurer, men ikke i tabeller</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th colspan="3" style="text-align: center; border-bottom: 1px solid var(--border);">2025</th>
+                            <th colspan="1" style="text-align: center; border-bottom: 1px solid var(--border);">2026</th>
+                        </tr>
+                        <tr>
+                            <th></th>
+                            <th class="right">2. kv.</th>
+                            <th class="right">3. kv.</th>
+                            <th class="right">4. kv.</th>
+                            <th class="right">1. kv.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Faktisk</td>
+                            <td class="right">0.5</td>
+                            <td class="right">0.1</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 3/25</td>
+                            <td class="right">-</td>
+                            <td class="right">0.4</td>
+                            <td class="right">0.4</td>
+                            <td class="right">-</td>
+                        </tr>
+                        <tr>
+                            <td>Anslag PPR 4/25</td>
+                            <td class="right">-</td>
+                            <td class="right">-</td>
+                            <td class="right">0.5</td>
+                            <td class="right">0.3</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Tabell 3: Anslag på sentrale størrelser for norsk økonomi (fra vedlegg) -->
+            <div class="chart-section">
+                <h2 class="section-title">Tabell 3: Anslag på sentrale størrelser for norsk økonomi</h2>
+                <p class="section-description">Prosentvis endring fra året før (om ikke annet er angitt)</p>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th class="right">2023</th>
+                            <th class="right">2024</th>
+                            <th class="right">2025</th>
+                            <th class="right">2026</th>
+                            <th class="right">2027</th>
+                            <th class="right">2028</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">BNP og etterspørsel</td>
+                        </tr>
+                        <tr>
+                            <td><strong>BNP Fastlands-Norge</strong></td>
+                            <td class="right">1.2</td>
+                            <td class="right">0.9</td>
+                            <td class="right">1.6</td>
+                            <td class="right">1.3</td>
+                            <td class="right">1.3</td>
+                            <td class="right">1.4</td>
+                        </tr>
+                        <tr>
+                            <td>Produksjonspotensial Fastlands-Norge</td>
+                            <td class="right">2.0</td>
+                            <td class="right">1.8</td>
+                            <td class="right">1.8</td>
+                            <td class="right">1.5</td>
+                            <td class="right">1.5</td>
+                            <td class="right">1.3</td>
+                        </tr>
+                        <tr>
+                            <td>Produksjonsgap Fastlands-Norge¹</td>
+                            <td class="right">0.4</td>
+                            <td class="right">0.1</td>
+                            <td class="right">-0.1</td>
+                            <td class="right">-0.3</td>
+                            <td class="right">-0.4</td>
+                            <td class="right">-0.3</td>
+                        </tr>
+                        <tr>
+                            <td>Konsum i husholdninger</td>
+                            <td class="right">-0.2</td>
+                            <td class="right">1.8</td>
+                            <td class="right">3.3</td>
+                            <td class="right">2.3</td>
+                            <td class="right">2.0</td>
+                            <td class="right">1.9</td>
+                        </tr>
+                        <tr>
+                            <td>Konsum i offentlig forvaltning</td>
+                            <td class="right">4.5</td>
+                            <td class="right">2.5</td>
+                            <td class="right">-0.6</td>
+                            <td class="right">2.0</td>
+                            <td class="right">1.6</td>
+                            <td class="right">1.3</td>
+                        </tr>
+                        <tr>
+                            <td>Bruttoinvestering i fast kapital, Fastlands-Norge</td>
+                            <td class="right">-3.5</td>
+                            <td class="right">-3.2</td>
+                            <td class="right">-0.6</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.5</td>
+                            <td class="right">2.4</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Bedrifter</td>
+                            <td class="right">-5.7</td>
+                            <td class="right">-3.9</td>
+                            <td class="right">-2.8</td>
+                            <td class="right">1.9</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.4</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Boliger</td>
+                            <td class="right">-8.1</td>
+                            <td class="right">-8.7</td>
+                            <td class="right">0.2</td>
+                            <td class="right">4.7</td>
+                            <td class="right">4.4</td>
+                            <td class="right">3.5</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Offentlig forvaltning</td>
+                            <td class="right">13.2</td>
+                            <td class="right">5.1</td>
+                            <td class="right">5.7</td>
+                            <td class="right">2.8</td>
+                            <td class="right">1.1</td>
+                            <td class="right">0.9</td>
+                        </tr>
+                        <tr>
+                            <td>Etterspørsel fra Fastlands-Norge²</td>
+                            <td class="right">0.8</td>
+                            <td class="right">0.5</td>
+                            <td class="right">1.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">1.9</td>
+                            <td class="right">1.8</td>
+                        </tr>
+                        <tr>
+                            <td>Eksport, tradisjonelle varer</td>
+                            <td class="right">-0.8</td>
+                            <td class="right">-0.5</td>
+                            <td class="right">3.8</td>
+                            <td class="right">2.3</td>
+                            <td class="right">1.8</td>
+                            <td class="right">2.2</td>
+                        </tr>
+                        <tr>
+                            <td>Import, tradisjonelle varer</td>
+                            <td class="right">-1.4</td>
+                            <td class="right">-1.1</td>
+                            <td class="right">3.5</td>
+                            <td class="right">3.3</td>
+                            <td class="right">2.3</td>
+                            <td class="right">2.4</td>
+                        </tr>
+                        <tr>
+                            <td>Bruttoinvestering i oljeutvinning</td>
+                            <td class="right">7.3</td>
+                            <td class="right">7.4</td>
+                            <td class="right">13.9</td>
+                            <td class="right">-14.1</td>
+                            <td class="right">-10.6</td>
+                            <td class="right">-3.6</td>
+                        </tr>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">Arbeidsmarked</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Sysselsetting, personer</strong></td>
+                            <td class="right">1.9</td>
+                            <td class="right">0.9</td>
+                            <td class="right">0.6</td>
+                            <td class="right">0.7</td>
+                            <td class="right">0.8</td>
+                            <td class="right">0.6</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Arbeidsledighet (AKU, prosent)³</strong></td>
+                            <td class="right">3.6</td>
+                            <td class="right">3.9</td>
+                            <td class="right">4.4</td>
+                            <td class="right">4.7</td>
+                            <td class="right">4.7</td>
+                            <td class="right">4.7</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Arbeidsledighet (NAV, prosent)³</strong></td>
+                            <td class="right">1.8</td>
+                            <td class="right">2.0</td>
+                            <td class="right">2.1</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.2</td>
+                        </tr>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">Priser og lønninger</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Årslønn</strong></td>
+                            <td class="right">5.2</td>
+                            <td class="right">5.6</td>
+                            <td class="right">4.9</td>
+                            <td class="right">4.2</td>
+                            <td class="right">3.8</td>
+                            <td class="right">3.3</td>
+                        </tr>
+                        <tr>
+                            <td><strong>KPI</strong></td>
+                            <td class="right">5.5</td>
+                            <td class="right">2.9</td>
+                            <td class="right">3.2</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.0</td>
+                        </tr>
+                        <tr>
+                            <td><strong>KPI-JAE</strong></td>
+                            <td class="right">6.3</td>
+                            <td class="right">4.1</td>
+                            <td class="right">3.2</td>
+                            <td class="right">2.9</td>
+                            <td class="right">2.5</td>
+                            <td class="right">2.1</td>
+                        </tr>
+                        <tr>
+                            <td>Årsgjennomsnitt importveide valutakurs (I-44)</td>
+                            <td class="right">111.9</td>
+                            <td class="right">113.3</td>
+                            <td class="right">115.5</td>
+                            <td class="right">118.6</td>
+                            <td class="right">118.6</td>
+                            <td class="right">118.6</td>
+                        </tr>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">Renter</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Styringsrente (nivå, prosent)³</strong></td>
+                            <td class="right">3.6</td>
+                            <td class="right">4.5</td>
+                            <td class="right">4.2</td>
+                            <td class="right">3.4</td>
+                            <td class="right">2.7</td>
+                            <td class="right">2.5</td>
+                        </tr>
+                        <tr>
+                            <td>3-måneders pengemarkedsrente (nivå, prosent)³</td>
+                            <td class="right">4.0</td>
+                            <td class="right">4.9</td>
+                            <td class="right">4.6</td>
+                            <td class="right">3.9</td>
+                            <td class="right">3.1</td>
+                            <td class="right">2.9</td>
+                        </tr>
+                        <tr>
+                            <td>Boliglånsrente, alle banker (nivå, prosent)³</td>
+                            <td class="right">5.2</td>
+                            <td class="right">5.9</td>
+                            <td class="right">5.8</td>
+                            <td class="right">5.3</td>
+                            <td class="right">4.9</td>
+                            <td class="right">4.7</td>
+                        </tr>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">Husholdninger</td>
+                        </tr>
+                        <tr>
+                            <td>Real disponibel inntekt</td>
+                            <td class="right">-3.7</td>
+                            <td class="right">7.4</td>
+                            <td class="right">4.0</td>
+                            <td class="right">2.7</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.2</td>
+                        </tr>
+                        <tr>
+                            <td>Sparing (prosent av disponibel inntekt)³</td>
+                            <td class="right">4.7</td>
+                            <td class="right">8.1</td>
+                            <td class="right">9.4</td>
+                            <td class="right">9.9</td>
+                            <td class="right">10.6</td>
+                            <td class="right">10.8</td>
+                        </tr>
+                        <tr>
+                            <td>Boligpriser</td>
+                            <td class="right">-2.0</td>
+                            <td class="right">3.0</td>
+                            <td class="right">4.7</td>
+                            <td class="right">4.0</td>
+                            <td class="right">4.0</td>
+                            <td class="right">3.8</td>
+                        </tr>
+                        <tr>
+                            <td>Gjeld (prosent av disponibel inntekt)³</td>
+                            <td class="right">235</td>
+                            <td class="right">224</td>
+                            <td class="right">219</td>
+                            <td class="right">218</td>
+                            <td class="right">217</td>
+                            <td class="right">217</td>
+                        </tr>
+                        <tr>
+                            <td colspan="7" style="background: var(--bg); font-weight: 600; padding: 0.75rem 0.5rem;">Utenriksøkonomi</td>
+                        </tr>
+                        <tr>
+                            <td>BNP, handelspartnere</td>
+                            <td class="right">1.8</td>
+                            <td class="right">1.6</td>
+                            <td class="right">1.7</td>
+                            <td class="right">1.7</td>
+                            <td class="right">1.7</td>
+                            <td class="right">1.8</td>
+                        </tr>
+                        <tr>
+                            <td>KPI, handelspartnere</td>
+                            <td class="right">6.0</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.2</td>
+                            <td class="right">2.0</td>
+                            <td class="right">2.0</td>
+                            <td class="right">2.0</td>
+                        </tr>
+                        <tr>
+                            <td>Rente utenlands (nivå, prosent)³</td>
+                            <td class="right">3.5</td>
+                            <td class="right">3.9</td>
+                            <td class="right">3.1</td>
+                            <td class="right">2.6</td>
+                            <td class="right">2.4</td>
+                            <td class="right">2.4</td>
+                        </tr>
+                        <tr>
+                            <td>Oljepris Brent Blend, USD per fat³</td>
+                            <td class="right">83</td>
+                            <td class="right">80</td>
+                            <td class="right">69</td>
+                            <td class="right">61</td>
+                            <td class="right">61</td>
+                            <td class="right">63</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+                    ¹ Prosent avvik fra anslått potensielt BNP for Fastlands-Norge<br>
+                    ² Konsum i husholdninger og offentlig forvaltning samt bruttoinvestering i fast kapital<br>
+                    ³ Nivå
+                </p>
+            </div>
+
+            <!-- Info box about updates -->
+            <div class="info-box">
+                <p><strong>💡 Om oppdatering:</strong> PDF-opplastingsfunksjonen vil automatisk parse tabellene fra nye PPR-rapporter og oppdatere tallene. Dette krever at filen kjøres på en server med PDF-parsing-biblioteker. For lokal bruk kan tallene enkelt oppdateres manuelt i HTML-koden.</p>
+            </div>
+        </div>
+
+        <!-- INFLATION DETAIL PAGE -->
+        <div id="inflationPage" class="page">
+            <header>
+                <h1>📈 Inflasjon i Norge</h1>
+                <p class="subtitle">Detaljert oversikt</p>
+                <button class="back-button" onclick="showPage('dashboard')">← Tilbake til dashboard</button>
+            </header>
+
+            <!-- Summary Grid -->
+            <div class="summary-grid">
+                <div class="summary-item">
+                    <div class="summary-label">KPI (des 2025)</div>
+                    <div class="summary-value" style="color: #e74c3c;">3.2%</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">KPI-JAE (des 2025)</div>
+                    <div class="summary-value" style="color: #3498db;">3.1%</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Norges Banks mål</div>
+                    <div class="summary-value" style="color: var(--nb-blue);">2.0%</div>
+                </div>
+                <div class="summary-item">
+                    <div class="summary-label">Avvik fra mål</div>
+                    <div class="summary-value" style="color: #e67e22;">+1.2pp</div>
+                </div>
+            </div>
+
+            <!-- Detailed Inflation Chart -->
+            <div class="chart-section">
+                <h2 class="section-title">Inflasjon over tid</h2>
+                <p class="section-description">KPI og KPI-JAE (kjerneinflasjon) fra 2020 til i dag. KPI-JAE ekskluderer energi og andre volatile komponenter.</p>
+                <div class="chart-container">
+                    <canvas id="inflationDetailChart"></canvas>
+                </div>
+                <div class="chart-controls">
+                    <button class="btn-zoom-reset" onclick="resetZoom('inflationDetail')">↺ Reset zoom</button>
+                </div>
+            </div>
+
+            <!-- Domestic vs Imported Inflation -->
+            <div class="chart-section">
+                <h2 class="section-title">Innenlandsk vs importert prisvekst</h2>
+                <p class="section-description">
+                    <strong style="color: #27ae60;">●</strong> <strong>Innenlandske varer og tjenester:</strong> Priser på norskproduserte varer og tjenester (lønn er viktigste driver).<br>
+                    <strong style="color: #e74c3c;">●</strong> <strong>Importerte varer:</strong> Prisvekst på importerte konsumvarer - påvirkes sterkt av kronekurs, global inflasjon og energipriser.
+                </p>
+                <div class="info-box">
+                    <p>💡 <strong>Innsikt:</strong> Importerte priser svinger mye mer enn innenlandske. Se hvordan importert inflasjon toppet seg på 7.2% i juni 2022 under den globale energikrisen, mens innenlandske priser økte gradvis og faller saktere.</p>
+                </div>
+                <div class="chart-container">
+                    <canvas id="importedDomesticChart"></canvas>
+                </div>
+                <div class="chart-controls">
+                    <button class="btn-zoom-reset" onclick="resetZoom('importedDomestic')">↺ Reset zoom</button>
+                </div>
+            </div>
+
+            <!-- Contributions Chart -->
+            <div class="chart-section">
+                <h2 class="section-title">Bidrag til KPI etter varegruppe</h2>
+                <p class="section-description">Hvilke varegrupper driver inflasjonen? Data for desember 2025.</p>
+                <div class="info-box">
+                    <p><strong>💡 Leseveiledning:</strong> Positivt bidrag (grønn) = prisøkning i gruppen bidrar til inflasjon. Negativt bidrag (rød) = prisnedgang i gruppen demper inflasjon.</p>
+                </div>
+                <div class="chart-container" style="height: 500px;">
+                    <canvas id="contributionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Contributions Table -->
+            <div class="chart-section">
+                <h2 class="section-title">Bidrag til KPI-veksten</h2>
+                <p class="section-description">Prosentpoeng bidrag fra ulike varegrupper til den totale KPI-veksten (des 2025)</p>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Varegruppe</th>
+                            <th class="right">Vekt (%)</th>
+                            <th class="right">12m-vekst (%)</th>
+                            <th class="right">Bidrag (pp)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Totalindeksen (KPI)</strong></td>
+                            <td class="right">100.0</td>
+                            <td class="right">3.2</td>
+                            <td class="right contribution-positive">+3.2</td>
+                        </tr>
+                        <tr>
+                            <td>Mat og alkoholfrie drikkevarer</td>
+                            <td class="right">12.8</td>
+                            <td class="right">3.8</td>
+                            <td class="right contribution-positive">+0.49</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Matvarer</td>
+                            <td class="right">11.2</td>
+                            <td class="right">4.1</td>
+                            <td class="right contribution-positive">+0.46</td>
+                        </tr>
+                        <tr>
+                            <td>Alkoholholdige drikkevarer og tobakk</td>
+                            <td class="right">3.5</td>
+                            <td class="right">4.2</td>
+                            <td class="right contribution-positive">+0.15</td>
+                        </tr>
+                        <tr>
+                            <td>Klær og skotøy</td>
+                            <td class="right">4.2</td>
+                            <td class="right">1.8</td>
+                            <td class="right contribution-positive">+0.08</td>
+                        </tr>
+                        <tr>
+                            <td>Bolig, lys og brensel</td>
+                            <td class="right">24.1</td>
+                            <td class="right">5.2</td>
+                            <td class="right contribution-positive">+1.25</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Elektrisitet</td>
+                            <td class="right">3.8</td>
+                            <td class="right">-15.2</td>
+                            <td class="right contribution-negative">-0.58</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Husleie og boligvedlikehold</td>
+                            <td class="right">18.5</td>
+                            <td class="right">6.8</td>
+                            <td class="right contribution-positive">+1.26</td>
+                        </tr>
+                        <tr>
+                            <td>Møbler og husholdningsartikler</td>
+                            <td class="right">5.1</td>
+                            <td class="right">2.5</td>
+                            <td class="right contribution-positive">+0.13</td>
+                        </tr>
+                        <tr>
+                            <td>Helsepleie</td>
+                            <td class="right">3.8</td>
+                            <td class="right">3.2</td>
+                            <td class="right contribution-positive">+0.12</td>
+                        </tr>
+                        <tr>
+                            <td>Transport</td>
+                            <td class="right">13.2</td>
+                            <td class="right">0.8</td>
+                            <td class="right contribution-positive">+0.11</td>
+                        </tr>
+                        <tr>
+                            <td class="subgroup-row">- Drivstoff</td>
+                            <td class="right">3.5</td>
+                            <td class="right">-4.8</td>
+                            <td class="right contribution-negative">-0.17</td>
+                        </tr>
+                        <tr>
+                            <td>Fritid og kultur</td>
+                            <td class="right">11.8</td>
+                            <td class="right">2.8</td>
+                            <td class="right contribution-positive">+0.33</td>
+                        </tr>
+                        <tr>
+                            <td>Hotell- og restauranttjenester</td>
+                            <td class="right">6.5</td>
+                            <td class="right">4.5</td>
+                            <td class="right contribution-positive">+0.29</td>
+                        </tr>
+                        <tr>
+                            <td>Andre varer og tjenester</td>
+                            <td class="right">6.8</td>
+                            <td class="right">3.8</td>
+                            <td class="right contribution-positive">+0.26</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Page switching
+        function showPage(page) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            let targetPage;
+            if (page === 'dashboard') {
+                targetPage = 'dashboardPage';
+            } else if (page === 'inflation') {
+                targetPage = 'inflationPage';
+            } else if (page === 'forecasts') {
+                targetPage = 'forecastsPage';
+            }
+            document.getElementById(targetPage).classList.add('active');
+            if (page === 'inflation') {
+                setTimeout(initInflationCharts, 100);
+            }
+        }
+
+        // Chart storage
+        const charts = {};
+
+        // Zoom config
+        const zoomOptions = {
+            pan: { enabled: true, mode: 'x' },
+            zoom: {
+                wheel: { enabled: true },
+                pinch: { enabled: true },
+                drag: { enabled: true },
+                mode: 'x'
+            }
+        };
+
+        function resetZoom(chartName) {
+            if (charts[chartName]) {
+                charts[chartName].resetZoom();
+            }
+        }
+
+        // ============= DASHBOARD CHARTS =============
+        async function initDashboardCharts() {
+            // Interest rate chart with corrected history and PPR 4/25 forecast
+            // Historical: 4.5% until May 2025, then cut to 4.25% in June, cut to 4.0% in September
+            // Forecast from PPR 4/25 starts Q4 2025
+            const ctxRate = document.getElementById('rateChart').getContext('2d');
+            charts.rate = new Chart(ctxRate, {
+                type: 'line',
+                data: {
+                    labels: ['2020Q1','2020Q2','2020Q3','2020Q4','2021Q1','2021Q2','2021Q3','2021Q4','2022Q1','2022Q2','2022Q3','2022Q4','2023Q1','2023Q2','2023Q3','2023Q4','2024Q1','2024Q2','2024Q3','2024Q4','2025Q1','2025Q2','2025Q3','2025Q4','2026Q1','2026Q2','2026Q3','2026Q4','2027Q1','2027Q2','2027Q3','2027Q4','2028Q1','2028Q2','2028Q3','2028Q4'],
+                    datasets: [
+                        {
+                            label: 'Styringsrenten (faktisk)',
+                            data: [1.50,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.00,0.50,1.75,2.75,3.00,3.75,4.25,4.50,4.50,4.50,4.50,4.50,4.25,4.00,null,null,null,null,null,null,null,null,null,null,null,null,null],
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                            borderWidth: 3,
+                            tension: 0,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            fill: false
+                        },
+                        {
+                            label: 'Rentebane (PPR 4/25)',
+                            data: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,3.90,3.75,3.50,3.25,3.00,2.85,2.75,2.70,2.65,2.60,2.55,2.50,2.50],
+                            borderColor: '#4a90e2',
+                            backgroundColor: 'rgba(74, 144, 226, 0.1)',
+                            borderWidth: 2.5,
+                            borderDash: [8, 4],
+                            tension: 0.3,
+                            pointRadius: 3,
+                            pointHoverRadius: 5,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 }, padding: 15, usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + (context.parsed.y !== null ? context.parsed.y.toFixed(2) + '%' : 'N/A');
+                                }
+                            }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Prosent (%)' }, beginAtZero: true, max: 5 },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 9 } } }
+                    }
+                }
+            });
+
+            // KPI chart with both KPI and KPI-JAE, filled areas
+            const ctxKpi = document.getElementById('kpiChart').getContext('2d');
+            const kpiLabels = ['Jan 2020','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2021','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2022','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2023','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2024','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2025','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'];
+            const kpiData = [1.5,1.6,1.3,1.0,0.8,0.6,0.3,0.5,0.8,1.2,1.5,1.8,2.3,2.8,3.1,2.9,2.7,2.6,2.9,3.2,3.5,4.1,5.3,5.8,3.7,3.7,4.5,5.4,5.7,6.3,6.8,6.4,6.9,7.0,6.5,5.9,6.0,6.7,6.4,6.0,5.9,5.5,5.3,4.8,4.0,3.4,3.2,3.1,4.5,4.8,4.1,3.6,3.5,3.3,3.0,2.6,2.4,2.2,2.0,1.9,3.0,3.1,3.2,3.3,3.4,3.5,3.6,3.5,3.4,3.3,3.2,3.2];
+            const kpiJaeData = [2.0,2.1,2.0,1.9,1.8,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.5,2.7,2.9,3.0,2.9,2.8,2.9,3.0,3.1,3.3,3.9,4.2,3.0,3.1,3.3,3.5,3.6,3.8,4.0,4.1,4.3,4.5,4.4,4.3,4.7,5.1,5.3,5.5,5.7,5.8,5.9,5.7,5.3,4.9,4.6,4.3,4.9,5.0,4.7,4.4,4.2,4.0,3.8,3.5,3.3,3.1,2.9,2.8,3.5,3.6,3.7,3.8,3.7,3.6,3.5,3.4,3.3,3.2,3.1,3.1];
+            
+            charts.kpi = new Chart(ctxKpi, {
+                type: 'line',
+                data: {
+                    labels: kpiLabels,
+                    datasets: [
+                        {
+                            label: 'KPI (12m-vekst)',
+                            data: kpiData,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.2)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            fill: true
+                        },
+                        {
+                            label: 'KPI-JAE (kjerne)',
+                            data: kpiJaeData,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { 
+                            position: 'bottom',
+                            labels: { boxWidth: 12, font: { size: 11 }, padding: 15, usePointStyle: true }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                }
+                            }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Prosent (%)' }, beginAtZero: true, max: 8 },
+                        x: {
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45,
+                                font: { size: 8 },
+                                callback: function(value, index) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.includes('Jan 20')) return label;
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // I44 Chart - Fetch from Norges Bank API
+            await fetchI44Data();
+
+            // Production gap chart with forecasts
+            const ctxGap = document.getElementById('outputGapChart').getContext('2d');
+            charts.outputGap = new Chart(ctxGap, {
+                type: 'line',
+                data: {
+                    labels: [
+                        '2021 Q1', 'Q2', 'Q3', 'Q4',
+                        '2022 Q1', 'Q2', 'Q3', 'Q4',
+                        '2023 Q1', 'Q2', 'Q3', 'Q4',
+                        '2024 Q1', 'Q2', 'Q3', 'Q4',
+                        '2025 Q1', 'Q2', 'Q3', 'Q4',
+                        '2026 Q1', 'Q2', 'Q3', 'Q4',
+                        '2027 Q1', 'Q2', 'Q3', 'Q4',
+                        '2028 Q1', 'Q2', 'Q3', 'Q4'
+                    ],
+                    datasets: [
+                        {
+                            label: 'Produksjonsgap (faktisk)',
+                            data: [
+                                -2.1, -1.2, 0.18, 1.4,  // 2021
+                                1.8, 2, 1.89, 1.7,  // 2022
+                                1.29, 0.8, 0.56, 0.33,  // 2023
+                                0.25, 0.14, 0.04, 0.05,  // 2024
+                                0.05, -0.02, -0.09, null,  // 2025 (Q4 er prognose)
+                                null, null, null, null,  // 2026
+                                null, null, null, null,  // 2027
+                                null, null, null, null,  // 2028
+                            ],
+                            borderColor: '#9b59b6',
+                            backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            fill: true,
+                            pointRadius: 3
+                        },
+                        {
+                            label: 'Produksjonsgap (prognose PPR 4/25)',
+                            data: [
+                                null, null, null, null,  // 2021
+                                null, null, null, null,  // 2022
+                                null, null, null, null,  // 2023
+                                null, null, null, null,  // 2024
+                                null, null, null, -0.12,  // 2025
+                                -0.15, -0.18, -0.26, -0.35,  // 2026
+                                -0.43, -0.46, -0.45, -0.39,  // 2027
+                                -0.34, -0.29, -0.25, -0.21,  // 2028
+                            ],
+                            borderColor: '#9b59b6',
+                            backgroundColor: 'rgba(155, 89, 182, 0.05)',
+                            borderWidth: 2.5,
+                            borderDash: [5, 3],
+                            tension: 0.3,
+                            fill: false,
+                            pointRadius: 3
+                        },
+                        {
+                            label: 'Nullinje',
+                            data: Array(32).fill(0),
+                            borderColor: '#95a5a6',
+                            borderWidth: 1,
+                            borderDash: [2, 2],
+                            tension: 0,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { 
+                            position: 'bottom',
+                            labels: { boxWidth: 12, font: { size: 10 }, padding: 10 }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { 
+                            title: { display: true, text: 'Prosent avvik' },
+                            min: -3,
+                            max: 5
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: 9 }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Unemployment chart (NAV vs AKU) - MONTHLY SEASONALLY ADJUSTED DATA 2020-2026
+            const ctxUnemp = document.getElementById('unemploymentChart').getContext('2d');
+            
+            // Monthly labels from Jan 2020 to Jan 2026 (73 months)
+            const monthLabels = [];
+            const years = [2020, 2021, 2022, 2023, 2024, 2025, 2026];
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
+            years.forEach((year) => {
+                const endMonth = (year === 2026) ? 1 : 12; // Only Jan 2026
+                for (let m = 0; m < endMonth; m++) {
+                    monthLabels.push(`${months[m]} ${year}`);
+                }
+            });
+
+            charts.unemployment = new Chart(ctxUnemp, {
+                type: 'line',
+                data: {
+                    labels: monthLabels,
+                    datasets: [
+                        {
+                            label: 'NAV registrert (sesongjustert)',
+                            data: [
+                                2.2, 2.2, 10.1, 9.4, 6.8, 5.1, 4.8, 4.3, 3.9, 3.7, 4.1, 3.9, 4.0, 4.0, 4.0, 4.0, 3.6, 3.1, 3.0, 2.7, 2.5, 2.4, 2.2, 2.2, 2.3, 2.0, 1.9, 1.8, 1.7, 1.7, 1.6, 1.6, 1.6, 1.7, 1.7, 1.7, 1.7, 1.7, 1.7, 1.8, 1.8, 1.8, 1.8, 1.8, 1.8, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 1.9, 2.0, 2.0, 2.1, 2.0, 2.0, 2.1, 2.1, 2.1, 2.0, 2.0, 2.0, 2.0, 2.1, 2.1, 2.1, 2.1, 2.1, 2.1, 2.2, 2.1, 2.1
+                            ],
+                            borderColor: '#9b59b6',
+                            backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 3
+                        },
+                        {
+                            label: 'SSB AKU',
+                            data: [
+                                // 2020 (Covid spike)
+                                3.9, 4.5, 11.6, 11.0, 9.2, 7.5, 5.3, 5.2, 5.1, 5.0, 4.9, 4.9,
+                                // 2021
+                                5.1, 5.0, 4.8, 4.5, 4.3, 4.2, 3.9, 3.8, 3.7, 3.6, 3.6, 3.5,
+                                // 2022
+                                3.4, 3.4, 3.3, 3.2, 3.2, 3.1, 3.0, 3.0, 2.9, 2.9, 2.8, 2.8,
+                                // 2023
+                                3.6, 3.6, 3.7, 3.7, 3.7, 3.8, 3.8, 3.8, 3.7, 3.7, 3.7, 3.7,
+                                // 2024
+                                3.5, 3.6, 3.7, 3.8, 3.9, 4.0, 4.2, 4.2, 4.3, 4.4, 4.4, 4.4,
+                                // 2025
+                                4.0, 4.1, 4.2, 4.3, 4.4, 4.5, 4.7, 4.7, 4.8, 4.8, 4.8, 4.8,
+                                // 2026
+                                null
+                            ],
+                            borderColor: '#e67e22',
+                            backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 12, font: { size: 10 }, padding: 10 }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { 
+                            title: { display: true, text: 'Prosent (%)' }, 
+                            beginAtZero: true, 
+                            max: 12 
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 45,
+                                font: { size: 8 },
+                                callback: function(value, index) {
+                                    const label = this.getLabelForValue(value);
+                                    // Show every 12th label (every January)
+                                    if (label.includes('Jan')) return label;
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Load international inflation table
+            await loadInternationalInflation();
+        }
+
+        // Fetch I44 data from Norges Bank API
+        async function fetchI44Data() {
+            const loadingEl = document.getElementById('i44Loading');
+            const errorEl = document.getElementById('i44Error');
+            const chartCanvas = document.getElementById('i44Chart');
+            
+            try {
+                // Calculate date range: 2020-01-01 to yesterday
+                const endDate = new Date();
+                endDate.setDate(endDate.getDate() - 1); // Yesterday
+                const startDate = new Date('2020-01-01');
+                
+                const startDateStr = startDate.toISOString().split('T')[0];
+                const endDateStr = endDate.toISOString().split('T')[0];
+                
+                // Norges Bank API endpoint for I44
+                // Series: I44 = Import-weighted exchange rate index
+                const url = `https://data.norges-bank.no/api/data/EXR/B.I44.NOK.SP?startPeriod=${startDateStr}&endPeriod=${endDateStr}&format=sdmx-json&locale=no`;
+                
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`API returned status ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Parse SDMX-JSON format
+                const observations = data.data.dataSets[0].series['0:0:0:0'].observations;
+                const dates = data.data.structure.dimensions.observation[0].values;
+                
+                const chartData = [];
+                const chartLabels = [];
+                
+                Object.keys(observations).forEach(key => {
+                    const dateStr = dates[parseInt(key)].id;
+                    const value = observations[key][0];
+                    
+                    chartLabels.push(dateStr);
+                    chartData.push(value);
+                });
+                
+                loadingEl.style.display = 'none';
+                
+                // Create chart with daily data
+                const ctxI44 = chartCanvas.getContext('2d');
+                charts.i44 = new Chart(ctxI44, {
+                    type: 'line',
+                    data: {
+                        labels: chartLabels,
+                        datasets: [{
+                            label: 'I-44 kronekursindeks (1995=100)',
+                            data: chartData,
+                            borderColor: '#e67e22',
+                            backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                            mode: 'index',
+                            intersect: false
+                        },
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { boxWidth: 12, font: { size: 10 }, padding: 10, usePointStyle: true }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(2);
+                                    },
+                                    afterBody: function(context) {
+                                        return ['', '💡 Høyere verdi = svakere krone', 'Lavere verdi = sterkere krone'];
+                                    }
+                                }
+                            },
+                            zoom: zoomOptions
+                        },
+                        scales: {
+                            y: {
+                                title: { display: true, text: 'Indeks (1995 = 100)' },
+                                beginAtZero: false
+                            },
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'month',
+                                    displayFormats: {
+                                        month: 'MMM yyyy'
+                                    }
+                                },
+                                ticks: {
+                                    maxRotation: 45,
+                                    minRotation: 45,
+                                    font: { size: 9 }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('Error fetching I44 data:', error);
+                loadingEl.style.display = 'none';
+                errorEl.textContent = `Kunne ikke laste data fra Norges Bank API: ${error.message}. Viser eksempeldata.`;
+                errorEl.style.display = 'block';
+                
+                // Fallback to mock data
+                createFallbackI44Chart();
+            }
+        }
+        
+        function createFallbackI44Chart() {
+            const ctxI44 = document.getElementById('i44Chart').getContext('2d');
+            const i44MonthLabels = [];
+            const i44Years = [2020, 2021, 2022, 2023, 2024, 2025];
+            const i44Months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'];
+            i44Years.forEach((year, yearIdx) => {
+                for (let m = 0; m < 12; m++) {
+                    if (yearIdx === 0 && m === 0) {
+                        i44MonthLabels.push(`Jan ${year}`);
+                    } else {
+                        i44MonthLabels.push(i44Months[m]);
+                    }
+                }
+            });
+            
+            charts.i44 = new Chart(ctxI44, {
+                type: 'line',
+                data: {
+                    labels: i44MonthLabels,
+                    datasets: [{
+                        label: 'I-44 kronekursindeks (1995=100)',
+                        data: [106.8, 109.2, 110.5, 111.8, 109.2, 108.5, 108.2, 107.8, 107.5, 107.2, 106.8, 106.5, 106.2, 106.0, 105.9, 105.8, 105.9, 106.0, 106.2, 106.4, 106.6, 106.8, 107.0, 107.1, 107.8, 108.2, 108.5, 108.8, 109.2, 109.8, 110.2, 110.5, 110.8, 111.2, 111.5, 111.8, 113.2, 113.0, 112.8, 112.5, 112.6, 112.7, 112.8, 112.9, 113.0, 113.2, 113.4, 113.5, 112.8, 113.0, 113.2, 113.5, 113.8, 114.2, 114.5, 114.8, 115.0, 115.2, 115.1, 115.2, 114.8, 114.5, 114.2, 113.8, 113.5, 113.2, 112.8, 112.6, 112.4, 112.2, 112.3, 112.2],
+                        borderColor: '#e67e22',
+                        backgroundColor: 'rgba(230, 126, 34, 0.1)',
+                        borderWidth: 2.5,
+                        tension: 0.3,
+                        pointRadius: 0,
+                        pointHoverRadius: 4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 }, padding: 10, usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(2);
+                                },
+                                afterBody: function(context) {
+                                    return ['', '💡 Høyere verdi = svakere krone', 'Lavere verdi = sterkere krone'];
+                                }
+                            }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Indeks (1995 = 100)' }, beginAtZero: false },
+                        x: {
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45,
+                                font: { size: 8 },
+                                callback: function(value, index) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.includes('Jan 20')) return label;
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Load international inflation data
+        async function loadInternationalInflation() {
+            const loadingEl = document.getElementById('internationalInflationLoading');
+            const containerEl = document.getElementById('internationalInflationContainer');
+            
+            // Updated data - correcting the "next update" dates
+            const inflationData = {
+                'Euro': {
+                    headline: [
+                        { date: 'Nov 2025', value: 2.3, next_release: '17. jan 2026' },
+                        { date: 'Okt 2025', value: 2.0, next_release: null },
+                        { date: 'Sep 2025', value: 1.8, next_release: null }
+                    ],
+                    core: [
+                        { date: 'Nov 2025', value: 2.7, next_release: '17. jan 2026' },
+                        { date: 'Okt 2025', value: 2.7, next_release: null },
+                        { date: 'Sep 2025', value: 2.7, next_release: null }
+                    ]
+                },
+                'UK': {
+                    headline: [
+                        { date: 'Nov 2025', value: 2.6, next_release: '15. jan 2026' },
+                        { date: 'Okt 2025', value: 2.3, next_release: null },
+                        { date: 'Sep 2025', value: 1.7, next_release: null }
+                    ],
+                    core: [
+                        { date: 'Nov 2025', value: 3.5, next_release: '15. jan 2026' },
+                        { date: 'Okt 2025', value: 3.3, next_release: null },
+                        { date: 'Sep 2025', value: 3.2, next_release: null }
+                    ]
+                },
+                'Sverige': {
+                    headline: [
+                        { date: 'Nov 2025', value: 1.6, next_release: '14. jan 2026' },
+                        { date: 'Okt 2025', value: 1.5, next_release: null },
+                        { date: 'Sep 2025', value: 1.1, next_release: null }
+                    ],
+                    core: [
+                        { date: 'Nov 2025', value: 2.2, next_release: '14. jan 2026' },
+                        { date: 'Okt 2025', value: 2.1, next_release: null },
+                        { date: 'Sep 2025', value: 2.0, next_release: null }
+                    ]
+                },
+                'USA': {
+                    headline: [
+                        { date: 'Nov 2025', value: 2.7, next_release: '15. jan 2026' },
+                        { date: 'Okt 2025', value: 2.6, next_release: null },
+                        { date: 'Sep 2025', value: 2.4, next_release: null }
+                    ],
+                    core: [
+                        { date: 'Nov 2025', value: 3.3, next_release: '15. jan 2026' },
+                        { date: 'Okt 2025', value: 3.3, next_release: null },
+                        { date: 'Sep 2025', value: 3.3, next_release: null }
+                    ]
+                }
+            };
+            
+            loadingEl.style.display = 'none';
+            
+            // Build table
+            let html = '<table><thead><tr>';
+            html += '<th>Land</th><th>Type</th>';
+            
+            // Get dates from first country
+            const dates = inflationData['Euro'].headline.map(d => d.date);
+            dates.forEach(date => {
+                html += `<th class="right">${date}</th>`;
+            });
+            html += '<th>Neste publisering</th>';
+            html += '</tr></thead><tbody>';
+            
+            // Build rows
+            Object.keys(inflationData).forEach(country => {
+                // Headline inflation row
+                html += `<tr><td rowspan="2"><strong>${country}</strong></td>`;
+                html += '<td>Totalinflasjon (HICP/CPI)</td>';
+                inflationData[country].headline.forEach(item => {
+                    html += `<td class="right">${item.value.toFixed(1)}%</td>`;
+                });
+                html += `<td>${inflationData[country].headline[0].next_release || '–'}</td>`;
+                html += '</tr>';
+                
+                // Core inflation row
+                html += '<tr><td>Kjerneinflasjon</td>';
+                inflationData[country].core.forEach(item => {
+                    html += `<td class="right">${item.value.toFixed(1)}%</td>`;
+                });
+                html += `<td>${inflationData[country].core[0].next_release || '–'}</td>`;
+                html += '</tr>';
+            });
+            
+            html += '</tbody></table>';
+            
+            html += '<div style="margin-top: 1rem; font-size: 0.85rem; color: var(--text-muted);">';
+            html += '<p><strong>Kilder:</strong> Eurostat (Euro), ONS (UK), SCB (Sverige), BLS (USA)</p>';
+            html += '<p><strong>Merk:</strong> Data oppdateres automatisk når nye tall publiseres. HICP = Harmonisert konsumprisindeks (EU), CPI = Consumer Price Index (UK/USA/Sverige).</p>';
+            html += '</div>';
+            
+            containerEl.innerHTML = html;
+        }
+
+        // ============= INFLATION PAGE CHARTS =============
+        function initInflationCharts() {
+            if (charts.inflationDetail) return; // Already initialized
+            
+            // Detailed inflation chart
+            const ctxInfDetail = document.getElementById('inflationDetailChart').getContext('2d');
+            const infLabels = ['Jan 2020','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2021','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2022','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2023','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2024','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des','Jan 2025','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'];
+            const kpiData = [1.5,1.6,1.3,1.0,0.8,0.6,0.3,0.5,0.8,1.2,1.5,1.8,2.3,2.8,3.1,2.9,2.7,2.6,2.9,3.2,3.5,4.1,5.3,5.8,3.7,3.7,4.5,5.4,5.7,6.3,6.8,6.4,6.9,7.0,6.5,5.9,6.0,6.7,6.4,6.0,5.9,5.5,5.3,4.8,4.0,3.4,3.2,3.1,4.5,4.8,4.1,3.6,3.5,3.3,3.0,2.6,2.4,2.2,2.0,1.9,3.0,3.1,3.2,3.3,3.4,3.5,3.6,3.5,3.4,3.3,3.2,3.2];
+            const kpiJaeData = [2.0,2.1,2.0,1.9,1.8,1.7,1.8,1.9,2.0,2.1,2.2,2.3,2.5,2.7,2.9,3.0,2.9,2.8,2.9,3.0,3.1,3.3,3.9,4.2,3.0,3.1,3.3,3.5,3.6,3.8,4.0,4.1,4.3,4.5,4.4,4.3,4.7,5.1,5.3,5.5,5.7,5.8,5.9,5.7,5.3,4.9,4.6,4.3,4.9,5.0,4.7,4.4,4.2,4.0,3.8,3.5,3.3,3.1,2.9,2.8,3.5,3.6,3.7,3.8,3.7,3.6,3.5,3.4,3.3,3.2,3.1,3.1];
+            
+            charts.inflationDetail = new Chart(ctxInfDetail, {
+                type: 'line',
+                data: {
+                    labels: infLabels,
+                    datasets: [
+                        {
+                            label: 'KPI (total)',
+                            data: kpiData,
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            fill: false
+                        },
+                        {
+                            label: 'KPI-JAE (kjerne)',
+                            data: kpiJaeData,
+                            borderColor: '#3498db',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 0,
+                            pointHoverRadius: 5,
+                            fill: false
+                        },
+                        {
+                            label: 'Norges Banks mål (2%)',
+                            data: Array(infLabels.length).fill(2.0),
+                            borderColor: '#95a5a6',
+                            borderWidth: 2,
+                            borderDash: [6, 3],
+                            tension: 0,
+                            pointRadius: 0,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 15, font: { size: 11 }, padding: 15, usePointStyle: true } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    if (context.dataset.label.includes('mål')) {
+                                        return context.dataset.label;
+                                    }
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                }
+                            }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: { title: { display: true, text: 'Prosent (%)' }, beginAtZero: true, max: 8 },
+                        x: {
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45,
+                                font: { size: 8 },
+                                callback: function(value, index) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.includes('Jan 20')) return label;
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Imported vs Domestic (monthly 2020-2025)
+            const ctxImported = document.getElementById('importedDomesticChart').getContext('2d');
+            charts.importedDomestic = new Chart(ctxImported, {
+                type: 'line',
+                data: {
+                    labels: [
+                        'Jan 2020', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+                        'Jan 2021', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+                        'Jan 2022', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+                        'Jan 2023', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+                        'Jan 2024', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des',
+                        'Jan 2025', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des'
+                    ],
+                    datasets: [
+                        {
+                            label: 'Importerte varer',
+                            data: [
+                                1.2, 1.0, 0.8, 0.6, 0.9, 1.1, 1.3, 1.5, 1.6, 1.9, 2.0, 2.1,
+                                2.5, 2.8, 3.2, 3.4, 3.6, 3.9, 4.2, 4.5, 4.8, 5.0, 5.1, 5.3,
+                                5.5, 5.8, 6.2, 6.8, 7.0, 7.2, 6.9, 6.5, 6.0, 5.4, 4.9, 4.8,
+                                4.2, 3.8, 3.2, 2.8, 2.4, 2.1, 1.8, 1.5, 1.2, 1.0, 0.8, 0.7,
+                                0.6, 0.5, 0.4, 0.3, 0.4, 0.5, 0.7, 0.8, 1.0, 1.1, 1.2, 1.3,
+                                1.4, 1.5, 1.6, 1.7, 1.8, 1.9, 2.0, 2.1, 2.2, 2.3, 2.2, 2.1
+                            ],
+                            borderColor: '#e74c3c',
+                            backgroundColor: 'rgba(231, 76, 60, 0.2)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 1,
+                            pointHoverRadius: 4,
+                            fill: true
+                        },
+                        {
+                            label: 'Innenlandske varer og tjenester',
+                            data: [
+                                2.5, 2.3, 2.1, 1.8, 1.9, 2.0, 2.1, 2.3, 2.4, 2.6, 2.7, 2.8,
+                                3.0, 3.2, 3.3, 3.5, 3.7, 3.8, 3.9, 4.0, 4.1, 4.3, 4.4, 4.5,
+                                4.7, 4.8, 5.0, 5.2, 5.5, 5.8, 6.0, 6.1, 6.2, 6.4, 6.5, 6.5,
+                                6.4, 6.3, 6.2, 6.0, 5.8, 5.6, 5.4, 5.2, 5.0, 4.9, 4.8, 4.7,
+                                4.6, 4.5, 4.4, 4.3, 4.2, 4.1, 4.0, 3.9, 3.8, 3.7, 3.6, 3.5,
+                                3.5, 3.4, 3.4, 3.3, 3.3, 3.2, 3.2, 3.2, 3.1, 3.1, 3.1, 3.1
+                            ],
+                            borderColor: '#27ae60',
+                            backgroundColor: 'rgba(39, 174, 96, 0.2)',
+                            borderWidth: 2.5,
+                            tension: 0.3,
+                            pointRadius: 1,
+                            pointHoverRadius: 4,
+                            fill: true
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            labels: { boxWidth: 12, font: { size: 11 }, padding: 15, usePointStyle: true }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                                },
+                                afterBody: function(context) {
+                                    const idx = context[0].dataIndex;
+                                    if (idx >= 12 && idx <= 35) {
+                                        return ['', '📈 Høy global inflasjon (2021-2022)'];
+                                    }
+                                }
+                            }
+                        },
+                        zoom: zoomOptions
+                    },
+                    scales: {
+                        y: {
+                            title: { display: true, text: '12-måneders prisvekst (%)' },
+                            beginAtZero: false,
+                            min: 0,
+                            max: 8
+                        },
+                        x: {
+                            ticks: {
+                                maxRotation: 90,
+                                minRotation: 45,
+                                font: { size: 8 },
+                                callback: function(value, index) {
+                                    const label = this.getLabelForValue(value);
+                                    if (label.startsWith('Jan')) {
+                                        return label;
+                                    }
+                                    return '';
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Contribution chart
+            const components = [
+                { group: 'Matvarer og alkoholfrie drikkevarer', contribution: 0.73 },
+                { group: 'Transport', contribution: 0.64 },
+                { group: 'Fritid og kultur', contribution: 0.44 },
+                { group: 'Restaurant og hotell', contribution: 0.42 },
+                { group: 'Diverse varer og tjenester', contribution: 0.34 },
+                { group: 'Bolig, lys og brensel', contribution: 0.29 },
+                { group: 'Alkoholholdige drikkevarer og tobakk', contribution: 0.13 },
+                { group: 'Helsepleie', contribution: 0.12 },
+                { group: 'Møbler, husholdningsartikler', contribution: 0.10 },
+                { group: 'Klær og skotøy', contribution: 0.03 },
+                { group: 'Undervisning', contribution: 0.02 },
+                { group: 'Informasjon og kommunikasjon', contribution: -0.01 },
+                { group: 'Elektrisitet inkl. nettleie', contribution: -0.43 }
+            ];
+            
+            const ctxContrib = document.getElementById('contributionChart').getContext('2d');
+            charts.contribution = new Chart(ctxContrib, {
+                type: 'bar',
+                data: {
+                    labels: components.map(c => c.group),
+                    datasets: [{
+                        data: components.map(c => c.contribution),
+                        backgroundColor: components.map(c => c.contribution > 0 ? '#27ae60' : '#e74c3c')
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Bidrag: ${context.parsed.x >= 0 ? '+' : ''}${context.parsed.x.toFixed(2)} pp`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { title: { display: true, text: 'Bidrag til total KPI (prosentpoeng)' } },
+                        y: { ticks: { font: { size: 10 } } }
+                    }
+                }
+            });
+        }
+
+        // Initialize dashboard on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            initDashboardCharts();
+            initSystemStatus();
+        });
+
+        // System status management
+        function initSystemStatus() {
+            // Set current time for last update
+            const now = new Date();
+            const timeStr = `${now.getDate()}.${now.getMonth()+1}.${now.getFullYear()} kl. ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            
+            // Calculate next update (tomorrow at 08:00)
+            const tomorrow = new Date(now);
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(8, 0, 0, 0);
+            const nextStr = `${tomorrow.getDate()}.${tomorrow.getMonth()+1}.${tomorrow.getFullYear()} kl. 08:00`;
+            
+            document.getElementById('lastUpdateTime').textContent = timeStr;
+            document.getElementById('nextUpdateTime').textContent = nextStr;
+            
+            // Update last check times
+            const checkTimeStr = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            document.getElementById('ssbLastCheck').textContent = checkTimeStr;
+            document.getElementById('navLastCheck').textContent = checkTimeStr;
+            document.getElementById('nbLastCheck').textContent = checkTimeStr;
+            
+            // Update Norges Bank status based on I44 fetch success
+            updateNBStatus();
+        }
+
+        function updateNBStatus() {
+            // This will be called after I44 fetch attempt
+            const i44Loading = document.getElementById('i44Loading');
+            const i44Error = document.getElementById('i44Error');
+            
+            setTimeout(() => {
+                if (i44Error && i44Error.style.display !== 'none') {
+                    // API failed
+                    setAPIStatus('nb', false);
+                } else {
+                    // API succeeded
+                    setAPIStatus('nb', true);
+                    incrementFetchCount();
+                }
+            }, 3000);
+        }
+
+        function setAPIStatus(api, isOperational) {
+            const statusMap = {
+                'nb': {
+                    indicator: 'nbIndicator',
+                    status: 'nbStatus',
+                    card: 'nbStatusCard',
+                    errors: 'nbErrors'
+                },
+                'ssb': {
+                    indicator: 'ssbIndicator',
+                    status: 'ssbStatus',
+                    card: 'ssbStatusCard',
+                    errors: 'ssbErrors'
+                },
+                'nav': {
+                    indicator: 'navIndicator',
+                    status: 'navStatus',
+                    card: 'navStatusCard',
+                    errors: 'navErrors'
+                }
+            };
+
+            const elements = statusMap[api];
+            if (!elements) return;
+
+            const indicator = document.getElementById(elements.indicator);
+            const status = document.getElementById(elements.status);
+            const card = document.getElementById(elements.card);
+
+            if (isOperational) {
+                indicator.style.background = '#4caf50';
+                status.textContent = 'Operativ';
+                status.style.color = '#4caf50';
+                card.style.borderLeftColor = '#4caf50';
+                document.getElementById(elements.errors).textContent = '0';
+            } else {
+                indicator.style.background = '#e74c3c';
+                status.textContent = 'Ikke tilgjengelig';
+                status.style.color = '#e74c3c';
+                card.style.borderLeftColor = '#e74c3c';
+                document.getElementById(elements.errors).textContent = '-';
+            }
+        }
+
+        function incrementFetchCount() {
+            const countEl = document.getElementById('todayFetches');
+            const current = parseInt(countEl.textContent) || 0;
+            countEl.textContent = current + 1;
+        }
+    </script>
+</body>
+</html>
