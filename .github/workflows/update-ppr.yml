@@ -1,0 +1,49 @@
+name: Update PPR Dashboard
+
+# Runs on PPR release dates + allows manual trigger
+on:
+  schedule:
+    # 20th of March, June, September, December at 10:00 UTC
+    - cron: '0 10 20 3,6,9,12 *'
+  
+  workflow_dispatch:  # Adds "Run workflow" button
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install pdfplumber beautifulsoup4 lxml requests
+    
+    - name: Download and parse PPR
+      run: |
+        python oppdater_ppr.py
+      continue-on-error: true
+    
+    - name: Check if HTML was updated
+      id: check_changes
+      run: |
+        if git diff --quiet index.html; then
+          echo "changed=false" >> $GITHUB_OUTPUT
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Commit and push if changed
+      if: steps.check_changes.outputs.changed == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add index.html
+        git commit -m "🔄 Auto-update PPR - $(date +'%Y-%m-%d')"
+        git push
