@@ -1,0 +1,74 @@
+name: Update PPR Dashboard
+
+# Runs on PPR release dates + allows manual trigger
+on:
+  schedule:
+    # 20th of March, June, September, December at 10:00 UTC (11:00 CET)
+    - cron: '0 10 20 3,6,9,12 *'
+  
+  workflow_dispatch:  # Adds "Run workflow" button in Actions tab
+    inputs:
+      force_update:
+        description: 'Force update even if no new PPR found'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  update-dashboard:
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: write  # Needed to commit changes
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        pip install pdfplumber beautifulsoup4 lxml requests
+    
+    - name: Download and parse PPR
+      run: |
+        python oppdater_ppr.py
+      continue-on-error: true  # Don't fail workflow if PPR not available yet
+    
+    - name: Check if HTML was updated
+      id: check_changes
+      run: |
+        if git diff --quiet index.html; then
+          echo "changed=false" >> $GITHUB_OUTPUT
+          echo "ℹ️ No changes to index.html"
+        else
+          echo "changed=true" >> $GITHUB_OUTPUT
+          echo "✅ index.html was updated"
+        fi
+    
+    - name: Commit and push if changed
+      if: steps.check_changes.outputs.changed == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add index.html
+        
+        # Create backup if it exists
+        if [ -f konjunkturovervaakning_backup_*.html ]; then
+          git add konjunkturovervaakning_backup_*.html
+        fi
+        
+        git commit -m "🔄 Auto-update PPR - $(date +'%Y-%m-%d %H:%M')"
+        git push
+    
+    - name: Create summary
+      run: |
+        echo "### 📊 PPR Update Summary" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Date:** $(date +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status:** ${{ steps.check_changes.outputs.changed == 'true' && '✅ Updated' || '⚠️ No changes' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Dashboard:** [View live dashboard](https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/)" >> $GITHUB_STEP_SUMMARY
